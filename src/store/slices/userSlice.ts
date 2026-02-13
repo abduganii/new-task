@@ -12,13 +12,18 @@ export interface UserSlice {
     selectedUser: User | null;
     isModalOpen: boolean;
 
+    // Pagination State
+    page: number;
+    pageSize: number;
+
     setError: (msg: string | null) => void;
     initializeUsers: () => void;
-    loadMore: () => void;
     updateUser: (user: User) => Promise<void>;
     setSort: (field: SortField) => void;
     setSelectedUser: (user: User | null) => void;
     setIsModalOpen: (isOpen: boolean) => void;
+    setPage: (page: number) => void;
+    setPageSize: (pageSize: number) => void;
 }
 
 export const createUserSlice: StateCreator<UserSlice> = (set, get) => ({
@@ -30,27 +35,17 @@ export const createUserSlice: StateCreator<UserSlice> = (set, get) => ({
     sortOrder: 'asc',
     selectedUser: null,
     isModalOpen: false,
+    page: 0,
+    pageSize: 10,
 
     setError: (error) => set({ error }),
 
     initializeUsers: () => {
         set({ isLoading: true });
         setTimeout(() => {
-            set({ users: generateUsers(10), isLoading: false });
-        }, 500);
-    },
-
-    loadMore: () => {
-        const { users, isLoading } = get();
-        if (isLoading || users.length >= 10000) return;
-
-        set({ isLoading: true });
-        setTimeout(() => {
-            set((state) => ({
-                users: [...state.users, ...generateUsers(10)],
-                isLoading: false
-            }));
-        }, 300);
+            // Generate full dataset for client-side pagination demonstration
+            set({ users: generateUsers(10000), isLoading: false });
+        }, 800);
     },
 
     updateUser: async (updatedUser) => {
@@ -89,4 +84,6 @@ export const createUserSlice: StateCreator<UserSlice> = (set, get) => ({
 
     setSelectedUser: (user) => set({ selectedUser: user }),
     setIsModalOpen: (isOpen) => set({ isModalOpen: isOpen }),
+    setPage: (page) => set({ page }),
+    setPageSize: (pageSize) => set({ pageSize, page: 0 }), // Reset to page 0 when page size changes
 });

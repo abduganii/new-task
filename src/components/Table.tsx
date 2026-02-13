@@ -1,13 +1,17 @@
-import React, { useRef, useEffect } from 'react';
+import React from 'react';
 import {
     Box,
     Paper,
     Typography,
     CircularProgress,
-    Avatar
+    Avatar,
+    TablePagination
 } from '@mui/material';
-import { ArrowUpward, ArrowDownward, OpenInNew } from '@mui/icons-material';
-import { useVirtualizer } from '@tanstack/react-virtual';
+import {
+    ArrowUpward,
+    ArrowDownward,
+    OpenInNew
+} from '@mui/icons-material';
 import type { SortField, SortOrder } from '../types';
 
 export interface ColumnConfig<T> {
@@ -28,9 +32,14 @@ interface TableProps<T> {
     sortOrder?: SortOrder;
     onSort?: (field: SortField) => void;
     onRowClick?: (item: T) => void;
-    onEndReached?: () => void;
     emptyMessage?: string;
-    rowHeight?: number;
+
+    // Pagination props
+    totalCount: number;
+    page: number;
+    pageSize: number;
+    onPageChange: (newPage: number) => void;
+    onPageSizeChange: (newPageSize: number) => void;
 }
 
 export function Table<T extends { id: string | number }>({
@@ -41,65 +50,17 @@ export function Table<T extends { id: string | number }>({
     sortOrder,
     onSort,
     onRowClick,
-    onEndReached,
     emptyMessage = "No data found.",
-    rowHeight = 73
+    totalCount,
+    page,
+    pageSize,
+    onPageChange,
+    onPageSizeChange
 }: TableProps<T>) {
-    const parentRef = useRef<HTMLDivElement>(null);
-
-    const virtualizer = useVirtualizer({
-        count: data.length,
-        getScrollElement: () => parentRef.current,
-        estimateSize: () => rowHeight,
-        overscan: 10,
-    });
-
-    const virtualItems = virtualizer.getVirtualItems();
-    const lastFetchedLengthRef = useRef(data.length);
-    const isAtBottomRef = useRef(false);
-
-    // Track scroll position to determine if we should auto-scroll new items
-    useEffect(() => {
-        const el = parentRef.current;
-        if (!el) return;
-        const handleScroll = () => {
-            const isNearBottom = el.scrollHeight - el.scrollTop <= el.clientHeight + 100;
-            isAtBottomRef.current = isNearBottom;
-        };
-        el.addEventListener('scroll', handleScroll);
-        return () => el.removeEventListener('scroll', handleScroll);
-    }, []);
-
-    useEffect(() => {
-        if (!onEndReached || virtualItems.length === 0 || isLoading || data.length >= 10000) return;
-
-        // Prevent duplicate trigger for same data length
-        if (data.length === lastFetchedLengthRef.current && data.length > 0) return;
-
-        const lastItem = virtualItems[virtualItems.length - 1];
-        // Trigger as soon as the last item enters the overscan/view
-        if (lastItem.index >= data.length - 1) {
-            lastFetchedLengthRef.current = data.length;
-            onEndReached();
-        }
-    }, [virtualItems, data.length, onEndReached, isLoading]);
-
-    // Smooth scroll down to reveal new items if user was already at the bottom
-    useEffect(() => {
-        if (data.length > lastFetchedLengthRef.current && isAtBottomRef.current) {
-            setTimeout(() => {
-                parentRef.current?.scrollTo({
-                    top: parentRef.current.scrollHeight,
-                    behavior: 'smooth'
-                });
-            }, 100);
-            lastFetchedLengthRef.current = data.length;
-        }
-    }, [data.length]);
 
     if (isLoading && data.length === 0) {
         return (
-            <Box display="flex" justifyContent="center" alignItems="center" height="100%">
+            <Box display="flex" justifyContent="center" alignItems="center" height="400px">
                 <CircularProgress />
             </Box>
         );
@@ -115,7 +76,8 @@ export function Table<T extends { id: string | number }>({
                 border: 1,
                 borderColor: 'divider',
                 borderRadius: 2,
-                overflow: 'hidden'
+                overflow: 'hidden',
+                bgcolor: 'background.paper'
             }}
         >
             {/* Header */}
@@ -141,7 +103,10 @@ export function Table<T extends { id: string | number }>({
                             cursor: column.sortable && onSort ? 'pointer' : 'default',
                             display: 'flex',
                             alignItems: 'center',
-                            userSelect: 'none'
+                            userSelect: 'none',
+                            '&:hover': {
+                                color: column.sortable ? 'primary.main' : 'inherit'
+                            }
                         }}
                         onClick={() => column.sortable && onSort && onSort(column.id as SortField)}
                     >
@@ -155,116 +120,115 @@ export function Table<T extends { id: string | number }>({
                 ))}
             </Box>
 
-            {/* Virtualized Rows */}
-            <Box ref={parentRef} sx={{ flex: 1, overflow: 'auto', position: 'relative' }}>
-                <Box
-                    sx={{
-                        height: `${virtualizer.getTotalSize()}px`,
-                        width: '100%',
-                        position: 'relative',
-                    }}
-                >
-                    {virtualItems.map((virtualRow) => {
-                        const item = data[virtualRow.index];
-                        if (!item) return null;
-                        return (
-                            <Box
-                                key={item.id}
-                                onClick={() => onRowClick && onRowClick(item)}
-                                style={{
-                                    position: 'absolute',
-                                    top: 0,
-                                    left: 0,
-                                    width: '100%',
-                                    height: `${virtualRow.size}px`,
-                                    transform: `translateY(${virtualRow.start}px)`,
-                                }}
-                                sx={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    borderBottom: 1,
-                                    borderColor: 'divider',
-                                    cursor: onRowClick ? 'pointer' : 'default',
-                                    bgcolor: 'background.paper',
-                                    '&:hover': {
-                                        bgcolor: onRowClick ? 'action.hover' : 'inherit',
-                                    },
-                                    transition: 'background-color 0.2s',
-                                }}
-                            >
-                                {columns.map((column) => (
-                                    <Box
-                                        key={column.id}
-                                        width={column.width}
-                                        minWidth={column.minWidth}
-                                        flex={column.flex}
-                                        p={2}
-                                        flexShrink={0}
-                                        overflow="hidden"
-                                    >
-                                        {column.render(item)}
-                                    </Box>
-                                ))}
-                            </Box>
-                        );
-                    })}
-
-                    {data.length === 0 && !isLoading && (
+            {/* List Body */}
+            <Box sx={{ flex: 1, overflow: 'auto', position: 'relative', minHeight: '400px' }}>
+                {data.length > 0 ? (
+                    data.map((item) => (
                         <Box
+                            key={item.id}
                             sx={{
-                                position: 'absolute',
-                                top: 0,
-                                left: 0,
-                                right: 0,
-                                bottom: 0,
                                 display: 'flex',
-                                flexDirection: 'column',
                                 alignItems: 'center',
-                                justifyContent: 'center',
-                                color: 'text.secondary',
-                                gap: 2
+                                borderBottom: 1,
+                                borderColor: 'divider',
+                                cursor: onRowClick ? 'pointer' : 'default',
+                                bgcolor: 'background.paper',
+                                '&:hover': {
+                                    bgcolor: 'action.hover',
+                                    '& .row-actions': { opacity: 1 }
+                                },
+                                transition: 'all 0.2s ease',
+                                position: 'relative'
                             }}
+                            onClick={() => onRowClick && onRowClick(item)}
                         >
-                            <Avatar sx={{ bgcolor: 'action.selected', width: 56, height: 56 }}>
-                                <OpenInNew />
-                            </Avatar>
-                            <Typography>{emptyMessage}</Typography>
+                            {columns.map((column) => (
+                                <Box
+                                    key={column.id}
+                                    width={column.width}
+                                    minWidth={column.minWidth}
+                                    flex={column.flex}
+                                    p={2}
+                                    flexShrink={0}
+                                    overflow="hidden"
+                                >
+                                    {column.render(item)}
+                                </Box>
+                            ))}
                         </Box>
-                    )}
-                </Box>
-
-                {/* Loader at the bottom */}
-                {isLoading && data.length > 0 && (
+                    ))
+                ) : (
                     <Box
-                        display="flex"
-                        flexDirection="column"
-                        alignItems="center"
-                        justifyContent="center"
-                        p={4}
-                        gap={1}
+                        sx={{
+                            height: '100%',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'text.secondary',
+                            gap: 2,
+                            py: 8
+                        }}
                     >
-                        <CircularProgress size={24} />
-                        <Typography variant="caption" color="text.secondary">Fetching more users...</Typography>
+                        <Avatar sx={{ bgcolor: 'action.selected', width: 64, height: 64 }}>
+                            <OpenInNew sx={{ fontSize: 32 }} />
+                        </Avatar>
+                        <Typography variant="h6">{emptyMessage}</Typography>
                     </Box>
                 )}
 
-                {/* Invisible trigger padding to help scroll detect the bottom */}
-                <Box sx={{ height: 20 }} />
+                {isLoading && data.length > 0 && (
+                    <Box
+                        sx={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            bgcolor: 'rgba(255,255,255,0.4)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            zIndex: 2,
+                            backdropFilter: 'blur(2px)'
+                        }}
+                    >
+                        <CircularProgress />
+                    </Box>
+                )}
             </Box>
 
+            {/* Footer with Pagination */}
             <Box
-                p={1.5}
-                px={2}
-                display="flex"
-                justifyContent="space-between"
-                alignItems="center"
                 bgcolor="background.default"
                 borderTop={1}
                 borderColor="divider"
+                display="flex"
+                alignItems="center"
+                justifyContent="space-between"
+                px={2}
             >
                 <Typography variant="caption" color="text.secondary" fontWeight="bold">
-                    Total Dashboard Capacity: {data.length.toLocaleString()} / 10,000
+                    Total: {totalCount.toLocaleString()} items
                 </Typography>
+
+                <TablePagination
+                    component="div"
+                    count={totalCount}
+                    page={page}
+                    onPageChange={(_event: React.MouseEvent<HTMLButtonElement> | null, newPage: number) => onPageChange(newPage)}
+                    rowsPerPage={pageSize}
+                    onRowsPerPageChange={(event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => onPageSizeChange(parseInt(event.target.value, 10))}
+                    rowsPerPageOptions={[5, 10, 25, 50, 100]}
+                    sx={{
+                        border: 'none',
+                        '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': {
+                            fontSize: '0.75rem',
+                            fontWeight: 500,
+                            color: 'text.secondary'
+                        }
+                    }}
+                />
             </Box>
         </Paper>
     );

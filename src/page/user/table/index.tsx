@@ -14,7 +14,10 @@ export const UserTable: React.FC = () => {
         setSelectedUser,
         setIsModalOpen,
         isLoading,
-        loadMore
+        page,
+        pageSize,
+        setPage,
+        setPageSize
     } = useAppStore();
 
     // Use nuqs to read filters from URL
@@ -22,7 +25,7 @@ export const UserTable: React.FC = () => {
     const [role] = useQueryState('role', parseAsString.withDefault(''));
     const [status] = useQueryState('status', parseAsString.withDefault(''));
 
-    const processedUsers = useMemo(() => {
+    const filteredAndSortedUsers = useMemo(() => {
         let result = users;
 
         if (searchQuery) {
@@ -45,14 +48,35 @@ export const UserTable: React.FC = () => {
             result = [...result].sort((a, b) => {
                 const aValue = a[sortField];
                 const bValue = b[sortField];
-                if (aValue < bValue) return sortOrder === 'asc' ? -1 : 1;
-                if (aValue > bValue) return sortOrder === 'asc' ? 1 : -1;
+
+                const isDate = (val: unknown): val is Date => val instanceof Date;
+
+                if (isDate(aValue) && isDate(bValue)) {
+                    return sortOrder === 'asc'
+                        ? aValue.getTime() - bValue.getTime()
+                        : bValue.getTime() - aValue.getTime();
+                }
+
+                if (typeof aValue === 'string' && typeof bValue === 'string') {
+                    return sortOrder === 'asc'
+                        ? aValue.localeCompare(bValue)
+                        : bValue.localeCompare(aValue);
+                }
+
+                if (typeof aValue === 'number' && typeof bValue === 'number') {
+                    return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
+                }
                 return 0;
             });
         }
 
         return result;
     }, [users, searchQuery, role, status, sortField, sortOrder]);
+
+    const paginatedUsers = useMemo(() => {
+        const start = page * pageSize;
+        return filteredAndSortedUsers.slice(start, start + pageSize);
+    }, [filteredAndSortedUsers, page, pageSize]);
 
     const handleRowClick = (user: User) => {
         setSelectedUser(user);
@@ -61,15 +85,19 @@ export const UserTable: React.FC = () => {
 
     return (
         <Table
-            data={processedUsers}
+            data={paginatedUsers}
             columns={USER_COLUMNS}
             isLoading={isLoading}
             sortField={sortField}
             sortOrder={sortOrder}
             onSort={setSort}
             onRowClick={handleRowClick}
-            onEndReached={loadMore}
             emptyMessage="No users found matching your criteria."
+            totalCount={filteredAndSortedUsers.length}
+            page={page}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
         />
     );
 };
